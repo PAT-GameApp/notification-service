@@ -1,0 +1,1 @@
+// The file KafkaProducerConfig.java has been removed as it was redundant.

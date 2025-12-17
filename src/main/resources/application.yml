@@ -1,16 +1,15 @@
 spring.application.name: notificationService
-server.port: 8400
+server.port: 8410
 spring:
     kafka:
         bootstrap-servers: localhost:9092
         consumer:
             group-id: notification-service-group
-            key-deserializer: org.apache.kafka.common.serialization.StringDeserializerer
-            value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+            key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+            value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
             properties:
-                spring.json.trusted.packages:'*'
+                spring.json.trusted.packages: "*"
             auto-offset-reset: earliest
-
 
         producer:
             key-serializer: org.apache.kafka.common.serialization.StringSerializer
@@ -23,7 +22,7 @@ spring:
 eureka:
     client:
         service-url:
-            defaultZone= http://localhost:8761/eureka/
+            defaultZone: http://localhost:8761/eureka/
 
 kafka:
     topic:

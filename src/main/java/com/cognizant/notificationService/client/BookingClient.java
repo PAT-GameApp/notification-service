@@ -8,6 +8,9 @@ import java.util.List;
 
 @FeignClient(name = "booking-service")
 public interface BookingClient {
-    @GetMapping("/bookings/all")
+    // Fetch all bookings from booking-service, aligned with BookingServiceController
+    // BookingServiceController defines:
+    // @GetMapping("/")
+    @GetMapping("/")
     List<Booking> getAllBookings();
 }
