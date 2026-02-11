@@ -5,16 +5,26 @@ import com.cognizant.notificationService.model.Notification;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+
+import org.apache.kafka.clients.admin.AdminClient;
+import org.apache.kafka.clients.admin.AdminClientConfig;
+import org.apache.kafka.clients.admin.ListConsumerGroupOffsetsResult;
+import org.apache.kafka.clients.consumer.OffsetAndMetadata;
+import org.apache.kafka.common.TopicPartition;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.Collection;
 import java.util.Deque;
+import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Map;
+import java.util.Properties;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -26,6 +36,15 @@ import java.util.concurrent.ConcurrentLinkedDeque;
 @Service
 public class BookingStoreService {
     private static final Logger log = LoggerFactory.getLogger(BookingStoreService.class);
+
+    @Value("${spring.kafka.bootstrap-servers}")
+    private String bootstrapServers;
+
+    @Value("${spring.kafka.consumer.group-id}")
+    private String groupId;
+
+    @Value("${kafka.topic.bookings}")
+    private String topicName;
 
     private final ConcurrentMap<String, Booking> bookingMap = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, String> bookingHashMap = new ConcurrentHashMap<>();
@@ -52,9 +71,12 @@ public class BookingStoreService {
         return bookingMap.values();
     }
 
-    public List<Notification> getLatestNotifications(int limit) {
+    public List<Notification> getLatestNotifications(int limit, Long userId) {
         int effectiveLimit = Math.max(0, Math.min(limit, NOTIFICATION_HISTORY_LIMIT));
-        return notificationHistory.stream().limit(effectiveLimit).toList();
+        return notificationHistory.stream()
+                .filter(n -> userId == null || (n.getUserId() != null && n.getUserId().equals(userId)))
+                .limit(effectiveLimit)
+                .toList();
     }
 
     public String getLastHash(String bookingId) {
@@ -147,17 +169,50 @@ public class BookingStoreService {
      * Convenience API mirroring `notification-app`: build a standard Notification
      * object and broadcast it.
      */
-    public void broadcastNotification(String message) {
+    public void broadcastNotification(String message, Long userId) {
         Notification notification = new Notification(
                 UUID.randomUUID().toString(),
                 message,
                 LocalDateTime.now(),
-                false);
+                false,
+                userId);
         // push into history (most recent first)
         notificationHistory.addFirst(notification);
         while (notificationHistory.size() > NOTIFICATION_HISTORY_LIMIT) {
             notificationHistory.removeLast();
         }
         broadcastNotification((Object) notification);
+    }
+
+    public void clearNotifications(Long userId) {
+        if (userId == null) {
+            notificationHistory.clear();
+        } else {
+            notificationHistory.removeIf(n -> userId.equals(n.getUserId()));
+        }
+        incrementKafkaOffset();
+    }
+
+    private void incrementKafkaOffset() {
+        Properties props = new Properties();
+        props.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
+        try (AdminClient adminClient = AdminClient.create(props)) {
+            ListConsumerGroupOffsetsResult offsetsResult = adminClient.listConsumerGroupOffsets(groupId);
+            Map<TopicPartition, OffsetAndMetadata> offsets = offsetsResult.partitionsToOffsetAndMetadata().get();
+
+            Map<TopicPartition, OffsetAndMetadata> newOffsets = new HashMap<>();
+            for (Map.Entry<TopicPartition, OffsetAndMetadata> entry : offsets.entrySet()) {
+                if (entry.getKey().topic().equals(topicName)) {
+                    newOffsets.put(entry.getKey(), new OffsetAndMetadata(entry.getValue().offset() + 1));
+                }
+            }
+
+            if (!newOffsets.isEmpty()) {
+                adminClient.alterConsumerGroupOffsets(groupId, newOffsets).all().get();
+                log.info("Successfully incremented Kafka offsets for group {} and topic {}", groupId, topicName);
+            }
+        } catch (Exception e) {
+            log.error("Failed to increment Kafka offset", e);
+        }
     }
 }

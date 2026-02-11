@@ -4,6 +4,7 @@ import com.cognizant.notificationService.model.Booking;
 import com.cognizant.notificationService.model.Notification;
 import com.cognizant.notificationService.service.BookingStoreService;
 import com.cognizant.notificationService.service.BookingSyncService;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -41,8 +42,16 @@ public class NotificationController {
      * Most recent notifications come first.
      */
     @GetMapping("/latest")
-    public List<Notification> getLatest(@RequestParam(name = "limit", defaultValue = "20") int limit) {
-        return store.getLatestNotifications(limit);
+    public List<Notification> getLatest(
+            @RequestParam(name = "limit", defaultValue = "20") int limit,
+            @RequestParam(name = "userId", required = false) Long userId) {
+        return store.getLatestNotifications(limit, userId);
+    }
+
+    @DeleteMapping("/clear")
+    public String clear(@RequestParam(name = "userId", required = false) Long userId) {
+        store.clearNotifications(userId);
+        return "Notifications cleared for user " + userId;
     }
 
     // ===== NEW: SSE stream for bell icon / real-time notifications =====
@@ -71,8 +80,9 @@ public class NotificationController {
 
     // Optional: a simple test endpoint to push a manual notification
     @PostMapping("/test-notification")
-    public String testNotification(@RequestParam(defaultValue = "Test notification") String message) {
-        store.broadcastNotification(message);
+    public String testNotification(@RequestParam(defaultValue = "Test notification") String message,
+            @RequestParam(required = false) Long userId) {
+        store.broadcastNotification(message, userId);
         return "Notification broadcasted";
     }
 }

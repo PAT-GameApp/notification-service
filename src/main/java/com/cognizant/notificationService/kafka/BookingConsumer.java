@@ -55,7 +55,7 @@ public class BookingConsumer {
             // store.broadcastNotification(notificationMessage);
 
             // This writes to history and broadcasts SSE BOOKING_NOTIFICATION
-            store.broadcastNotification(notificationMessage);
+            store.broadcastNotification(notificationMessage, userId);
 
         } catch (Exception e) {
             log.error("Failed to process booking event payload: {}", payload, e);
